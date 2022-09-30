@@ -9,4 +9,6 @@ INC += \
 PROJECT_SOURCE += $(wildcard src/*.c)
 SRC_C += $(addprefix $(CURRENT_PATH)/, $(PROJECT_SOURCE))
 
+ZIG_OBJ += zigusb.o
+
 include libs/tinyusb/examples/rules.mk
