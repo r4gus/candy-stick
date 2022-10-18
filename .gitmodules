@@ -1,3 +1,6 @@
 [submodule "libs/tinyusb"]
 	path = libs/tinyusb
 	url = git@github.com:r4gus/tinyusb.git
+[submodule "libs/ztap"]
+	path = libs/ztap
+	url = git@github.com:r4gus/ztap.git

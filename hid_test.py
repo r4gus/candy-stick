@@ -15,8 +15,12 @@ for vid in  USB_VID:
                 # Get input from console and encode to UTF8 for array of chars.
                 # hid generic inout is single report therefore by HIDAPI requirement
                 # it must be preceeded with 0x00 as dummy reportID
-                str_out = b'\x00'
-                str_out += input("Send text to HID Device : ").encode('utf-8')
+                str_out = b'\xff\xff\xff\xff'   # CID
+                str_out += b'\x86'              # CMD
+                str_out += b'\x00\x08'          # Byte Count
+                str_out += b'\x11\x22\x33\x44\x55\x66\x77\x88'
+                inp = input("Send text to HID Device : ").encode('utf-8')
+                #str_out += b'\x04'
                 dev.write(str_out)
                 str_in = dev.read(64)
-                print("Received from HID Device:", str_in, '\n')
+                print("Received from HID Device:", str_in.hex(), '\n')

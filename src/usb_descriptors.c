@@ -125,7 +125,7 @@ char const* string_desc_arr [] =
 {
   (const char[]) { 0x09, 0x04 }, // 0: is supported language is English (0x0409)
   "SugarYourCoffee",            // 1: Manufacturer
-  "CandyStick",                 // 2: Product
+  "CandyStick FIDO",            // 2: Product
   "cafebabe",                   // 3: Serials, should use chip ID
 };
 
