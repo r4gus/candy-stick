@@ -13,60 +13,18 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
-/// Size of a USB full speed packet
-pub const PACKET_SIZE = 64;
-/// Size of the initialization packet header
-pub const IP_HEADER_SIZE = 7;
-/// Size of the continuation packet header
-pub const CP_HEADER_SIZE = 5;
-pub const Cid = u32;
-pub const Nonce = u64;
-pub const CID_LENGTH = @sizeOf(Cid);
-pub const NONCE_LENGTH = @sizeOf(Nonce);
-pub const CMD_LENGTH = @sizeOf(Cmd);
-pub const BCNT_LENGTH = 2;
+const command = @import("ctaphid/command.zig");
+const Cmd = command.Cmd;
+const CMD_LENGTH = command.CMD_LENGTH;
+
+const misc = @import("ctaphid/misc.zig");
+const Cid = misc.Cid;
+const Nonce = misc.Nonce;
+const CID_LENGTH = misc.CID_LENGTH;
+const NONCE_LENGTH = misc.NONCE_LENGTH;
+const BCNT_LENGTH = misc.BCNT_LENGTH;
+
 pub const INIT_DATA_LENGTH: u16 = @sizeOf(InitResponse);
-
-fn sliceToInt(comptime T: type, slice: []const u8) T {
-    var res: T = 0;
-    var i: usize = 0;
-    while (i < @sizeOf(T)) : (i += 1) {
-        res += @intCast(T, slice[i]);
-
-        if (i < @sizeOf(T) - 1) {
-            res <<= 8;
-        }
-    }
-    return res;
-}
-
-fn intToSlice(slice: []u8, i: anytype) void {
-    // big endian
-    var x = i;
-    const SIZE: usize = @sizeOf(@TypeOf(i));
-
-    var j: usize = 0;
-    while (j < SIZE) : (j += 1) {
-        slice[SIZE - 1 - j] = @intCast(u8, x & 0xff);
-        x >>= 8;
-    }
-}
-
-/// CTAPHID commands
-pub const Cmd = enum(u8) {
-    /// Transaction that echoes the data back.
-    ping = 0x01,
-    /// Encapsulated CTAP1/U2F message.
-    msg = 0x03,
-    /// Allocate a new CID or synchronize channel.
-    init = 0x06,
-    /// Encapsulated CTAP CBOR encoded message.
-    cbor = 0x10,
-    /// Cancel any outstanding requests on the given CID.
-    cancel = 0x11,
-    /// Error response message (see `ErrorCodes`).
-    err = 0x3f,
-};
 
 /// Supported error codes by the CTAPHID_ERROR response.
 pub const ErrorCodes = enum(u8) {
@@ -162,8 +120,8 @@ pub const InitResponse = packed struct {
     }
 
     pub fn serialize(self: *const @This(), slice: []u8) void {
-        intToSlice(slice[0..NONCE_LENGTH], self.nonce);
-        intToSlice(slice[COFF .. COFF + CID_LENGTH], self.cid);
+        misc.intToSlice(slice[0..NONCE_LENGTH], self.nonce);
+        misc.intToSlice(slice[COFF .. COFF + CID_LENGTH], self.cid);
         slice[VIOFF] = self.version_identifier;
         slice[MJDOFF] = self.major_device_version_number;
         slice[MIDOFF] = self.minor_device_version_number;
@@ -211,22 +169,6 @@ pub fn initResponse(allocator: Allocator, channel: Cid, init_response: *const In
 // Response Handler
 //--------------------------------------------------------------------+
 
-pub fn makeResponse(
-    cid: Cid,
-    cmd: Cmd,
-    data: []const u8,
-) ![][]u8 {
-    _ = cid;
-    _ = cmd;
-
-    // Calculate how many continuation packets are required.
-    const rem_len = data.len - (PACKET_SIZE - IP_HEADER_SIZE);
-    var additional_packets = rem_len / (PACKET_SIZE - CP_HEADER_SIZE);
-    if (rem_len % (PACKET_SIZE - CP_HEADER_SIZE) != 0) {
-        additional_packets += 1;
-    }
-}
-
 // TODO: assume that the allocator will always provide enough memory.
 pub fn handle(allocator: Allocator, packet: []const u8) ?[]const u8 {
     const S = struct {
@@ -248,9 +190,9 @@ pub fn handle(allocator: Allocator, packet: []const u8) ?[]const u8 {
     if (S.busy == null) { // initialization packet
         // TODO: handle errors like packets being to short
         // TODO: handle error bit 7 of CMD not being set.
-        S.busy = sliceToInt(Cid, packet[0..4]);
+        S.busy = misc.sliceToInt(Cid, packet[0..4]);
         S.cmd = @intToEnum(Cmd, packet[4] & 0x7f);
-        S.bcnt_total = sliceToInt(u16, packet[5..7]);
+        S.bcnt_total = misc.sliceToInt(u16, packet[5..7]);
 
         const l = packet.len - 7;
         std.mem.copy(u8, S.data[0..l], packet[7..]);
@@ -261,7 +203,7 @@ pub fn handle(allocator: Allocator, packet: []const u8) ?[]const u8 {
     if (S.bcnt >= S.bcnt_total and S.busy != null and S.cmd != null) {
         switch (S.cmd.?) {
             .init => {
-                const ir = InitResponse.new(sliceToInt(Nonce, S.data[0..8]), 0xcafebabe, false, true, false);
+                const ir = InitResponse.new(misc.sliceToInt(Nonce, S.data[0..8]), 0xcafebabe, false, true, false);
                 const response = initResponse(allocator, S.busy.?, &ir) catch {
                     reset(&S);
                     return null;
