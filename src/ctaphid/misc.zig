@@ -1,9 +1,11 @@
 pub const Cid = u32;
 pub const Nonce = u64;
 pub const Bcnt = u16;
+pub const Seq = u8;
 pub const CID_LENGTH = @sizeOf(Cid);
 pub const NONCE_LENGTH = @sizeOf(Nonce);
 pub const BCNT_LENGTH = @sizeOf(Bcnt);
+pub const SEQ_LENGTH = @sizeOf(Seq);
 
 /// Convert a slice into an integer of the given type T
 /// (big endian, i.e. network byte order).

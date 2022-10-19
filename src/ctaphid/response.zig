@@ -17,12 +17,13 @@ const CMD_OFFSET = misc.CID_LENGTH;
 const BCNT_OFFSET = CMD_OFFSET + command.CMD_LENGTH;
 const IP_DATA_OFFSET = BCNT_OFFSET + misc.BCNT_LENGTH;
 const SEQ_OFFSET = misc.CID_LENGTH;
-const CP_DATA_OFFSET = SEQ_OFFSET + 1;
+const CP_DATA_OFFSET = SEQ_OFFSET + misc.SEQ_LENGTH;
 
 const COMMAND_ID = 0x80;
 
 pub const CtapHidResponseIterator = struct {
     cntr: usize,
+    seq: misc.Seq,
     buffer: [PACKET_SIZE]u8,
     data: []const u8,
     cid: misc.Cid,
@@ -41,10 +42,15 @@ pub const CtapHidResponseIterator = struct {
 
                 misc.intToSlice(self.buffer[0..misc.CID_LENGTH], self.cid);
                 self.buffer[CMD_OFFSET] = @enumToInt(self.cmd) | COMMAND_ID;
-                misc.intToSlice(self.buffer[BCNT_OFFSET .. BCNT_OFFSET + misc.BCNT_LENGTH], @intCast(misc.Bcnt, len));
+                misc.intToSlice(self.buffer[BCNT_OFFSET .. BCNT_OFFSET + misc.BCNT_LENGTH], @intCast(misc.Bcnt, self.data.len));
             } else {
-                len = 0;
+                len = if (self.data.len - self.cntr <= CP_DATA_SIZE) self.data.len - self.cntr else CP_DATA_SIZE;
                 off = CP_DATA_OFFSET;
+
+                misc.intToSlice(self.buffer[0..misc.CID_LENGTH], self.cid);
+                self.buffer[SEQ_OFFSET] = self.seq;
+
+                self.seq += 1;
             }
 
             std.mem.copy(u8, self.buffer[off..], self.data[self.cntr .. self.cntr + len]);
@@ -64,6 +70,7 @@ pub fn iterator(
 ) CtapHidResponseIterator {
     return CtapHidResponseIterator{
         .cntr = 0,
+        .seq = 0,
         .buffer = undefined,
         .data = data,
         .cid = cid,
@@ -98,6 +105,25 @@ test "Response Iterator 2" {
 
     const r1 = iter.next();
     try std.testing.expectEqualSlices(u8, "\x11\x22\x33\x44\x86\x00\x11aaaaaaaaaaaaaaaaa\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00", r1.?);
+
+    try std.testing.expectEqual(null, iter.next());
+}
+
+test "Response Iterator 3" {
+    const allocator = std.testing.allocator;
+    var mem = try allocator.alloc(u8, 74);
+    defer allocator.free(mem);
+
+    std.mem.set(u8, mem[0..57], 'a');
+    std.mem.set(u8, mem[57..74], 'b');
+
+    var iter = iterator(0xcafebabe, command.Cmd.cbor, mem);
+
+    const r1 = iter.next();
+    try std.testing.expectEqualSlices(u8, "\xca\xfe\xba\xbe\x90\x00\x4aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", r1.?);
+
+    const r2 = iter.next();
+    try std.testing.expectEqualSlices(u8, "\xca\xfe\xba\xbe\x00bbbbbbbbbbbbbbbbb\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00", r2.?);
 
     try std.testing.expectEqual(null, iter.next());
 }
