@@ -13,6 +13,12 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
+/// Size of a USB full speed packet
+pub const PACKET_SIZE = 64;
+/// Size of the initialization packet header
+pub const IP_HEADER_SIZE = 7;
+/// Size of the continuation packet header
+pub const CP_HEADER_SIZE = 5;
 pub const Cid = u32;
 pub const Nonce = u64;
 pub const CID_LENGTH = @sizeOf(Cid);
@@ -21,17 +27,29 @@ pub const CMD_LENGTH = @sizeOf(Cmd);
 pub const BCNT_LENGTH = 2;
 pub const INIT_DATA_LENGTH: u16 = @sizeOf(InitResponse);
 
-fn sliceToNonce(slice: []u8) Nonce {
-    var res: Nonce = 0;
+fn sliceToInt(comptime T: type, slice: []const u8) T {
+    var res: T = 0;
     var i: usize = 0;
-    while (i < NONCE_LENGTH) : (i += 1) {
-        res += @intCast(Nonce, slice[NONCE_LENGTH - 1 - i]);
+    while (i < @sizeOf(T)) : (i += 1) {
+        res += @intCast(T, slice[i]);
 
-        if (i < NONCE_LENGTH - 1) {
+        if (i < @sizeOf(T) - 1) {
             res <<= 8;
         }
     }
     return res;
+}
+
+fn intToSlice(slice: []u8, i: anytype) void {
+    // big endian
+    var x = i;
+    const SIZE: usize = @sizeOf(@TypeOf(i));
+
+    var j: usize = 0;
+    while (j < SIZE) : (j += 1) {
+        slice[SIZE - 1 - j] = @intCast(u8, x & 0xff);
+        x >>= 8;
+    }
 }
 
 /// CTAPHID commands
@@ -144,8 +162,8 @@ pub const InitResponse = packed struct {
     }
 
     pub fn serialize(self: *const @This(), slice: []u8) void {
-        std.mem.copy(u8, slice[0..NONCE_LENGTH], std.mem.asBytes(&self.nonce));
-        std.mem.copy(u8, slice[COFF .. COFF + CID_LENGTH], std.mem.asBytes(&self.cid));
+        intToSlice(slice[0..NONCE_LENGTH], self.nonce);
+        intToSlice(slice[COFF .. COFF + CID_LENGTH], self.cid);
         slice[VIOFF] = self.version_identifier;
         slice[MJDOFF] = self.major_device_version_number;
         slice[MIDOFF] = self.minor_device_version_number;
@@ -175,12 +193,16 @@ pub const InitResponse = packed struct {
 ///
 /// The caller is responsible for deallocating the memory after use.
 pub fn initResponse(allocator: Allocator, channel: Cid, init_response: *const InitResponse) ![]u8 {
-    var response = try allocator.alloc(u8, CID_LENGTH + CMD_LENGTH + BCNT_LENGTH + InitResponse.SIZE);
+    //var response = try allocator.alloc(u8, CID_LENGTH + CMD_LENGTH + BCNT_LENGTH + InitResponse.SIZE);
+    var response = try allocator.alloc(u8, 64);
     std.mem.copy(u8, response[0..CID_LENGTH], std.mem.asBytes(&channel));
-    response[CID_LENGTH] = @enumToInt(Cmd.init);
+    response[CID_LENGTH] = @enumToInt(Cmd.init) | 0x80;
     response[CID_LENGTH + CMD_LENGTH] = @intCast(u8, (InitResponse.SIZE >> 8) & 0xff); // msb
     response[CID_LENGTH + CMD_LENGTH + 1] = @intCast(u8, InitResponse.SIZE & 0xff); // lsb
     init_response.serialize(response[CID_LENGTH + CMD_LENGTH + BCNT_LENGTH ..]);
+    for (response[24..]) |*b| {
+        b.* = 0;
+    }
 
     return response;
 }
@@ -188,6 +210,22 @@ pub fn initResponse(allocator: Allocator, channel: Cid, init_response: *const In
 //--------------------------------------------------------------------+
 // Response Handler
 //--------------------------------------------------------------------+
+
+pub fn makeResponse(
+    cid: Cid,
+    cmd: Cmd,
+    data: []const u8,
+) ![][]u8 {
+    _ = cid;
+    _ = cmd;
+
+    // Calculate how many continuation packets are required.
+    const rem_len = data.len - (PACKET_SIZE - IP_HEADER_SIZE);
+    var additional_packets = rem_len / (PACKET_SIZE - CP_HEADER_SIZE);
+    if (rem_len % (PACKET_SIZE - CP_HEADER_SIZE) != 0) {
+        additional_packets += 1;
+    }
+}
 
 // TODO: assume that the allocator will always provide enough memory.
 pub fn handle(allocator: Allocator, packet: []const u8) ?[]const u8 {
@@ -210,9 +248,9 @@ pub fn handle(allocator: Allocator, packet: []const u8) ?[]const u8 {
     if (S.busy == null) { // initialization packet
         // TODO: handle errors like packets being to short
         // TODO: handle error bit 7 of CMD not being set.
-        S.busy = (@intCast(Cid, packet[0]) << 24) + (@intCast(Cid, packet[1]) << 16) + (@intCast(Cid, packet[2]) << 8) + @intCast(Cid, packet[3]);
+        S.busy = sliceToInt(Cid, packet[0..4]);
         S.cmd = @intToEnum(Cmd, packet[4] & 0x7f);
-        S.bcnt_total = (@intCast(u16, packet[5]) << 8) + @intCast(u16, packet[6]);
+        S.bcnt_total = sliceToInt(u16, packet[5..7]);
 
         const l = packet.len - 7;
         std.mem.copy(u8, S.data[0..l], packet[7..]);
@@ -223,7 +261,7 @@ pub fn handle(allocator: Allocator, packet: []const u8) ?[]const u8 {
     if (S.bcnt >= S.bcnt_total and S.busy != null and S.cmd != null) {
         switch (S.cmd.?) {
             .init => {
-                const ir = InitResponse.new(sliceToNonce(S.data[0..8]), S.busy.?, false, true, false);
+                const ir = InitResponse.new(sliceToInt(Nonce, S.data[0..8]), 0xcafebabe, false, true, false);
                 const response = initResponse(allocator, S.busy.?, &ir) catch {
                     reset(&S);
                     return null;
