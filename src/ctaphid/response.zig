@@ -9,18 +9,31 @@ pub const PACKET_SIZE = 64;
 pub const IP_HEADER_SIZE = 7;
 /// Size of the continuation packet header
 pub const CP_HEADER_SIZE = 5;
-
+/// Data size of a initialization packet
 pub const IP_DATA_SIZE = PACKET_SIZE - IP_HEADER_SIZE;
+/// Data size of a continuation packet
 pub const CP_DATA_SIZE = PACKET_SIZE - CP_HEADER_SIZE;
 
+// Offset of the CMD header field
 const CMD_OFFSET = misc.CID_LENGTH;
+// Offset of the BCNT header field
 const BCNT_OFFSET = CMD_OFFSET + command.CMD_LENGTH;
+// Offset of the data section (initialization packet)
 const IP_DATA_OFFSET = BCNT_OFFSET + misc.BCNT_LENGTH;
+// Offset of the SEQ header field
 const SEQ_OFFSET = misc.CID_LENGTH;
+// Offset of the data section (continuation packet)
 const CP_DATA_OFFSET = SEQ_OFFSET + misc.SEQ_LENGTH;
 
+// Command identifier; Bit 7 of the CMD header field must
+// be set to mark a initialization packet.
 const COMMAND_ID = 0x80;
 
+/// Iterator for a CTAPHID response.
+///
+/// The iterator acts as a view into a data slice (the bytes to be sent to the client).
+///
+/// The first time `next()` is called, the iterator will return a `u8` slice of size `PACKET_SIZE` (64 Bytes, i.e. USB full speed) which contains a initialization packet, i.e. header plus the first data bytes (`PACKET_SIZE`-7). Every continuous call to `next()` will return a continuation packet until all data bytes have been encoded.
 pub const CtapHidResponseIterator = struct {
     cntr: usize,
     seq: misc.Seq,
@@ -29,8 +42,11 @@ pub const CtapHidResponseIterator = struct {
     cid: misc.Cid,
     cmd: command.Cmd,
 
+    /// Get the next data packet.
+    ///
+    /// Returns `null` if all data bytes have been processed.
     pub fn next(self: *@This()) ?[]const u8 {
-        if (self.cntr < self.data.len) {
+        if (self.cntr < self.data.len or (self.data.len == 0 and self.cntr == 0)) {
             // Zero the whole buffer
             std.mem.set(u8, self.buffer[0..], 0);
 
@@ -56,6 +72,12 @@ pub const CtapHidResponseIterator = struct {
             std.mem.copy(u8, self.buffer[off..], self.data[self.cntr .. self.cntr + len]);
             self.cntr += len;
 
+            if (self.data.len == 0) {
+                // special case: data slice is empty.
+                // prevents this block from executing twice.
+                self.cntr = 1;
+            }
+
             return self.buffer[0..];
         } else {
             return null;
@@ -63,6 +85,7 @@ pub const CtapHidResponseIterator = struct {
     }
 };
 
+/// Create a new `CtapHidResponseIterator`.
 pub fn iterator(
     cid: misc.Cid,
     cmd: command.Cmd,
@@ -125,5 +148,39 @@ test "Response Iterator 3" {
     const r2 = iter.next();
     try std.testing.expectEqualSlices(u8, "\xca\xfe\xba\xbe\x00bbbbbbbbbbbbbbbbb\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00", r2.?);
 
+    try std.testing.expectEqual(null, iter.next());
+}
+
+test "Response Iterator 4" {
+    const allocator = std.testing.allocator;
+    var mem = try allocator.alloc(u8, 128);
+    defer allocator.free(mem);
+
+    std.mem.set(u8, mem[0..57], 'a');
+    std.mem.set(u8, mem[57..116], 'b');
+    std.mem.set(u8, mem[116..128], 'c');
+
+    var iter = iterator(0xcafebabe, command.Cmd.cbor, mem);
+
+    const r1 = iter.next();
+    try std.testing.expectEqualSlices(u8, "\xca\xfe\xba\xbe\x90\x00\x80aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", r1.?);
+
+    const r2 = iter.next();
+    try std.testing.expectEqualSlices(u8, "\xca\xfe\xba\xbe\x00bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", r2.?);
+
+    const r3 = iter.next();
+    try std.testing.expectEqualSlices(u8, "\xca\xfe\xba\xbe\x01cccccccccccc\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00", r3.?);
+
+    try std.testing.expectEqual(null, iter.next());
+}
+
+test "Response Iterator 5" {
+    var iter = iterator(0xcafebabe, command.Cmd.cbor, &.{});
+
+    const r1 = iter.next();
+    try std.testing.expectEqualSlices(u8, "\xca\xfe\xba\xbe\x90\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00", r1.?);
+
+    try std.testing.expectEqual(null, iter.next());
+    try std.testing.expectEqual(null, iter.next());
     try std.testing.expectEqual(null, iter.next());
 }
