@@ -24,6 +24,9 @@ const CID_LENGTH = misc.CID_LENGTH;
 const NONCE_LENGTH = misc.NONCE_LENGTH;
 const BCNT_LENGTH = misc.BCNT_LENGTH;
 
+const resp = @import("ctaphid/response.zig");
+const CtapHidResponseIterator = resp.CtapHidResponseIterator;
+
 pub const INIT_DATA_LENGTH: u16 = @sizeOf(InitResponse);
 
 /// Supported error codes by the CTAPHID_ERROR response.
@@ -170,7 +173,7 @@ pub fn initResponse(allocator: Allocator, channel: Cid, init_response: *const In
 //--------------------------------------------------------------------+
 
 // TODO: assume that the allocator will always provide enough memory.
-pub fn handle(allocator: Allocator, packet: []const u8) ?[]const u8 {
+pub fn handle(allocator: Allocator, packet: []const u8) ?CtapHidResponseIterator {
     const S = struct {
         // Authenticator is currently busy handling a request with the given
         // Cid. `null` means not busy.
@@ -204,31 +207,35 @@ pub fn handle(allocator: Allocator, packet: []const u8) ?[]const u8 {
         switch (S.cmd.?) {
             .init => {
                 const ir = InitResponse.new(misc.sliceToInt(Nonce, S.data[0..8]), 0xcafebabe, false, true, false);
-                const response = initResponse(allocator, S.busy.?, &ir) catch {
+                var data = allocator.alloc(u8, InitResponse.SIZE) catch {
                     reset(&S);
                     return null;
                 };
+                ir.serialize(data[0..]);
+                var response = resp.iterator(S.busy.?, S.cmd.?, data);
 
                 reset(&S);
                 return response;
             },
             else => {
-                var response = allocator.alloc(u8, CID_LENGTH + CMD_LENGTH + 2) catch {
-                    reset(&S);
-                    return null;
-                };
-                std.mem.copy(u8, response[0..CID_LENGTH], std.mem.asBytes(&S.busy.?));
-                response[CID_LENGTH] = 0xbf;
-                response[CID_LENGTH + 1] = 1;
-                response[CID_LENGTH + 2] = 0x01;
+                //var response = allocator.alloc(u8, CID_LENGTH + CMD_LENGTH + 2) catch {
+                //    reset(&S);
+                //    return null;
+                //};
+                //std.mem.copy(u8, response[0..CID_LENGTH], std.mem.asBytes(&S.busy.?));
+                //response[CID_LENGTH] = 0xbf;
+                //response[CID_LENGTH + 1] = 1;
+                //response[CID_LENGTH + 2] = 0x01;
 
+                //reset(&S);
+                //return response;
                 reset(&S);
-                return response;
+                return null;
             },
         }
     }
 
-    return packet;
+    return null;
 }
 
 inline fn reset(s: anytype) void {
