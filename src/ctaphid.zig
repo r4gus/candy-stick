@@ -11,6 +11,7 @@
 //! (see https://fidoalliance.org/specs/fido-v2.0-ps-20190130/fido-client-to-authenticator-protocol-v2.0-ps-20190130.html#usb-message-and-packet-structure)
 
 const std = @import("std");
+const ztap = @import("ztap");
 const Allocator = std.mem.Allocator;
 
 const command = @import("ctaphid/command.zig");
@@ -173,7 +174,7 @@ pub fn initResponse(allocator: Allocator, channel: Cid, init_response: *const In
 //--------------------------------------------------------------------+
 
 // TODO: assume that the allocator will always provide enough memory.
-pub fn handle(allocator: Allocator, packet: []const u8) ?CtapHidResponseIterator {
+pub fn handle(allocator: Allocator, packet: []const u8, auth: *const ztap.Authenticator) ?CtapHidResponseIterator {
     const S = struct {
         // Authenticator is currently busy handling a request with the given
         // Cid. `null` means not busy.
@@ -216,6 +217,14 @@ pub fn handle(allocator: Allocator, packet: []const u8) ?CtapHidResponseIterator
 
                 reset(&S);
                 return response;
+            },
+            .cbor => {
+                var data = auth.handle(allocator, S.data[0..S.bcnt]) catch {
+                    reset(&S);
+                    return null;
+                };
+                _ = data;
+                return resp.iterator(S.busy.?, S.cmd.?, "\x00\xa6\x01\x82\x66\x55\x32\x46\x5f\x56\x32\x68\x46\x49\x44\x4f\x5f\x32\x5f\x30\x02\x81\x6b\x68\x6d\x61\x63\x2d\x73\x65\x63\x72\x65\x74\x03\x50\xfa\x2b\x99\xdc\x9e\x39\x42\x57\x8f\x92\x4a\x30\xd2\x3c\x41\x18\x04\xa4\x62\x72\x6b\xf5\x62\x75\x70\xf5\x64\x70\x6c\x61\x74\xf4\x69\x63\x6c\x69\x65\x6e\x74\x50\x69\x6e\xf4\x05\x19\x04\xb0\x06\x81\x01");
             },
             else => {
                 //var response = allocator.alloc(u8, CID_LENGTH + CMD_LENGTH + 2) catch {

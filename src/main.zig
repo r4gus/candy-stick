@@ -7,7 +7,11 @@ const ctaphid = @import("ctaphid.zig");
 //--------------------------------------------------------------------+
 
 // defined in tinyusb/src/class/hid/hid_device.h
+
+/// Send report to host
 extern fn tud_hid_n_report(instance: u8, report_id: u8, report: [*]const u8, len: u16) bool;
+/// Check if the interface is ready to use
+extern fn tud_hid_n_ready(instance: u8) bool;
 extern fn board_millis() u32;
 extern fn board_led_write(state: bool) void;
 extern fn board_init() void;
@@ -29,6 +33,10 @@ const HidReportType = enum(c_int) {
 // Wrapper
 //--------------------------------------------------------------------+
 
+fn tudHidReady() bool {
+    return tud_hid_n_ready(0);
+}
+
 fn tudHidReport(report_id: u8, report: []const u8) bool {
     if (report.len > 65535) {
         return false;
@@ -49,7 +57,7 @@ fn tudTask() void {
 //--------------------------------------------------------------------+
 
 var versions = [_]ztap.Versions{ztap.Versions.fido_2_0};
-const auth = ztap.Authenticator.initDefault(&versions, [_]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+const auth = ztap.Authenticator.initDefault(&versions, [_]u8{ 0xFA, 0x2B, 0x99, 0xDC, 0x9E, 0x39, 0x42, 0x57, 0x8F, 0x92, 0x4A, 0x30, 0xD2, 0x3C, 0x41, 0x18 });
 
 export fn main() void {
     board_init();
@@ -123,18 +131,15 @@ export fn tud_hid_set_report_cb(itf: u8, report_id: u8, report_type: HidReportTy
     var fba = std.heap.FixedBufferAllocator.init(&b);
     const allocator = fba.allocator();
 
-    var response = ctaphid.handle(allocator, buffer[0..bufsize]);
+    var response = ctaphid.handle(allocator, buffer[0..bufsize], &auth);
 
-    //const response = auth.handle(allocator, buffer[0..bufsize]) catch {
-    //    _ = tudHidReport(0, "\x12");
-    //    // handle error
-    //    return;
-    //};
-    //_ = response;
-
-    //_ = tudHidReport(0, &err_buffer);
     if (response != null) {
         while (response.?.next()) |r| {
+            while (!tudHidReady()) {
+                tudTask();
+                // wait until ready
+            }
+
             _ = tudHidReport(0, r);
         }
     }

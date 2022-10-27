@@ -10,7 +10,7 @@ zig build-obj \
         --pkg-end \
     --pkg-end \
     -freference-trace \
-    src/zigusb.zig
+    src/main.zig
 
 # Build the project
 make BOARD=same51curiositynano all

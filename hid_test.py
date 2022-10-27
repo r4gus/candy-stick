@@ -22,5 +22,5 @@ for vid in  USB_VID:
                 inp = input("Send text to HID Device : ").encode('utf-8')
                 #str_out += b'\x04'
                 dev.write(str_out)
-                str_in = dev.read(64)
+                str_in = dev.read(128)
                 print("Received from HID Device:", str_in.hex(), '\n')
