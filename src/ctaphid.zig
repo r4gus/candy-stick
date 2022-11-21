@@ -174,7 +174,7 @@ pub fn initResponse(allocator: Allocator, channel: Cid, init_response: *const In
 //--------------------------------------------------------------------+
 
 // TODO: assume that the allocator will always provide enough memory.
-pub fn handle(allocator: Allocator, packet: []const u8, auth: *const ztap.Authenticator) ?CtapHidResponseIterator {
+pub fn handle(allocator: Allocator, packet: []const u8, auth: anytype) ?CtapHidResponseIterator {
     const S = struct {
         // Authenticator is currently busy handling a request with the given
         // Cid. `null` means not busy.
@@ -185,6 +185,8 @@ pub fn handle(allocator: Allocator, packet: []const u8, auth: *const ztap.Authen
         var bcnt_total: u16 = 0;
         // Data bytes already received.
         var bcnt: u16 = 0;
+        // Last sequence number (continuation packet).
+        var seq: ?u8 = 0;
         // Data buffer.
         // All clients (CIDs) share the same buffer, i.e. only one request
         // can be handled at a time.
@@ -192,7 +194,12 @@ pub fn handle(allocator: Allocator, packet: []const u8, auth: *const ztap.Authen
     };
 
     if (S.busy == null) { // initialization packet
-        // TODO: handle errors like packets being to short
+        if (packet.len < 7) {
+            // TODO: error packet ist too short
+        } else if (packet[4] & 0x80 == 0) {
+            // TODO: error, expected initialization packet but found continuation packet
+        }
+
         // TODO: handle error bit 7 of CMD not being set.
         S.busy = misc.sliceToInt(Cid, packet[0..4]);
         S.cmd = @intToEnum(Cmd, packet[4] & 0x7f);
@@ -202,6 +209,23 @@ pub fn handle(allocator: Allocator, packet: []const u8, auth: *const ztap.Authen
         std.mem.copy(u8, S.data[0..l], packet[7..]);
         S.bcnt = @intCast(u16, l);
     } else { // continuation packet
+        if (packet.len < 5) {
+            // TODO: error packet ist too short
+        }
+
+        if (misc.sliceToInt(Cid, packet[0..4]) != S.busy.?) {
+            // TODO: error, cid's don't match
+            // tell client that the authenticator is busy!
+        } else if (packet[4] & 0x80 != 0) {
+            // TODO: error, expected continuation packet but found initialization packet
+        } else if ((S.seq == null and packet[4] > 0) or (S.seq != null and packet[4] != S.seq.? + 1)) {
+            // TODO: unexpected sequence number
+        }
+
+        S.seq = packet[4];
+        const l = packet.len - 5;
+        std.mem.copy(u8, S.data[S.bcnt .. S.bcnt + l], packet[5..]);
+        S.bcnt += @intCast(u16, l);
     }
 
     if (S.bcnt >= S.bcnt_total and S.busy != null and S.cmd != null) {
@@ -255,4 +279,5 @@ inline fn reset(s: anytype) void {
     s.*.cmd = null;
     s.*.bcnt_total = 0;
     s.*.bcnt = 0;
+    s.*.seq = null;
 }

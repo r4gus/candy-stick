@@ -113,8 +113,8 @@ test "Response Iterator 1" {
     const r1 = iter.next();
     try std.testing.expectEqualSlices(u8, "\x11\x22\x33\x44\x86\x00\x39aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", r1.?);
 
-    try std.testing.expectEqual(null, iter.next());
-    try std.testing.expectEqual(null, iter.next());
+    try std.testing.expectEqual(iter.next(), null);
+    try std.testing.expectEqual(iter.next(), null);
 }
 
 test "Response Iterator 2" {
@@ -129,7 +129,7 @@ test "Response Iterator 2" {
     const r1 = iter.next();
     try std.testing.expectEqualSlices(u8, "\x11\x22\x33\x44\x86\x00\x11aaaaaaaaaaaaaaaaa\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00", r1.?);
 
-    try std.testing.expectEqual(null, iter.next());
+    try std.testing.expectEqual(iter.next(), null);
 }
 
 test "Response Iterator 3" {
@@ -148,7 +148,7 @@ test "Response Iterator 3" {
     const r2 = iter.next();
     try std.testing.expectEqualSlices(u8, "\xca\xfe\xba\xbe\x00bbbbbbbbbbbbbbbbb\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00", r2.?);
 
-    try std.testing.expectEqual(null, iter.next());
+    try std.testing.expectEqual(iter.next(), null);
 }
 
 test "Response Iterator 4" {
@@ -171,7 +171,7 @@ test "Response Iterator 4" {
     const r3 = iter.next();
     try std.testing.expectEqualSlices(u8, "\xca\xfe\xba\xbe\x01cccccccccccc\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00", r3.?);
 
-    try std.testing.expectEqual(null, iter.next());
+    try std.testing.expectEqual(iter.next(), null);
 }
 
 test "Response Iterator 5" {
@@ -180,7 +180,7 @@ test "Response Iterator 5" {
     const r1 = iter.next();
     try std.testing.expectEqualSlices(u8, "\xca\xfe\xba\xbe\x90\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00", r1.?);
 
-    try std.testing.expectEqual(null, iter.next());
-    try std.testing.expectEqual(null, iter.next());
-    try std.testing.expectEqual(null, iter.next());
+    try std.testing.expectEqual(iter.next(), null);
+    try std.testing.expectEqual(iter.next(), null);
+    try std.testing.expectEqual(iter.next(), null);
 }

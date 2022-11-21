@@ -10,6 +10,7 @@ zig build-obj \
         --pkg-end \
     --pkg-end \
     -freference-trace \
+    -OReleaseSmall \
     src/main.zig
 
 # Build the project

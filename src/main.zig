@@ -2,6 +2,9 @@ const std = @import("std");
 const ztap = @import("ztap");
 const ctaphid = @import("ctaphid.zig");
 
+const auth_descriptor = @import("auth_descriptor.zig");
+const auth = auth_descriptor.auth;
+
 //--------------------------------------------------------------------+
 // Extern
 //--------------------------------------------------------------------+
@@ -56,11 +59,9 @@ fn tudTask() void {
 // Main
 //--------------------------------------------------------------------+
 
-var versions = [_]ztap.Versions{ztap.Versions.fido_2_0};
-const auth = ztap.Authenticator.initDefault(&versions, [_]u8{ 0xFA, 0x2B, 0x99, 0xDC, 0x9E, 0x39, 0x42, 0x57, 0x8F, 0x92, 0x4A, 0x30, 0xD2, 0x3C, 0x41, 0x18 });
-
 export fn main() void {
     board_init();
+    auth_descriptor.enableTrng();
 
     // init device stack on configured roothub port.
     _ = tud_init(0);
@@ -136,7 +137,7 @@ export fn tud_hid_set_report_cb(itf: u8, report_id: u8, report_type: HidReportTy
     if (response != null) {
         while (response.?.next()) |r| {
             while (!tudHidReady()) {
-                tudTask();
+                tudTask(); // TODO: might lead to strange edge cases but neccessary
                 // wait until ready
             }
 
