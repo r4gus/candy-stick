@@ -318,17 +318,24 @@ pub fn Auth(comptime impl: type) type {
                     defer authData.deinit();
                     try ad.encode(authData.writer());
 
-                    const sig = context.key_pair.sign("", null) catch {
+                    var st = context.key_pair.signer(null) catch {
+                        res.items[0] = @enumToInt(StatusCodes.ctap1_err_other);
+                        return res.toOwnedSlice();
+                    };
+                    st.update(authData.items);
+                    st.update(mcp.@"1"); // clientDataHash
+                    const sig = st.finalize() catch {
                         res.items[0] = @enumToInt(StatusCodes.ctap1_err_other);
                         return res.toOwnedSlice();
                     };
 
+                    var x: [Ecdsa.Signature.der_encoded_max_length]u8 = undefined;
                     const ao = AttestationObject{
-                        .@"1" = Fmt.none,
+                        .@"1" = Fmt.@"packed",
                         .@"2_b" = authData.items,
                         .@"3" = AttStmt{ .@"packed" = .{
                             .alg_b = crypt.CoseId.ES256,
-                            .sig_b = &sig.toBytes(),
+                            .sig_b = sig.toDer(&x),
                         } },
                     };
 
