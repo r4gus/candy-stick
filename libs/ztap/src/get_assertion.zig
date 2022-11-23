@@ -22,4 +22,34 @@ pub const GetAssertionParam = struct {
     @"6": ?[16]u8 = null,
     /// pinProtocol: PIN protocol version selected by client.
     @"7": ?u8 = null,
+
+    pub fn deinit(self: *const @This(), allocator: std.mem.Allocator) void {
+        allocator.free(self.@"1");
+        allocator.free(self.@"2_b");
+        if (self.@"3") |pkcds| {
+            for (pkcds) |pkcd| {
+                pkcd.deinit(allocator);
+            }
+            allocator.free(pkcds);
+        }
+    }
+};
+
+pub const GetAssertionResponse = struct {
+    /// credential: PublicKeyCredentialDescriptor structure containing the
+    /// credential identifier whose private key was used to generate the
+    /// assertion. May be omitted if the allowList has exactly one Credential.
+    @"1": ?PublicKeyCredentialDescriptor = null,
+    /// authData: The signed-over contextual bindings made by the authenticator,
+    /// as specified in [WebAuthN].
+    @"2_b": []const u8,
+    /// signature: The assertion signature produced by the authenticator, as
+    /// specified in [WebAuthN].
+    @"3_b": []const u8,
+    // @"4": TODO: add user (0x4)
+    /// numberOfCredentials: Total number of account credentials for the RP.
+    /// This member is required when more than one account for the RP and the
+    /// authenticator does not have a display. Omitted when returned for the
+    /// authenticatorGetNextAssertion method.
+    @"5": ?u64 = null,
 };

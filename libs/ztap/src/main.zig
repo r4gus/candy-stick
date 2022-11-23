@@ -25,6 +25,7 @@ pub const Commands = commands.Commands;
 const getCommand = commands.getCommand;
 const MakeCredentialParam = commands.make_credential.MakeCredentialParam;
 const GetAssertionParam = commands.get_assertion.GetAssertionParam;
+const GetAssertionResponse = commands.get_assertion.GetAssertionResponse;
 const version = @import("version.zig");
 pub const Versions = version.Versions;
 const extension = @import("extensions.zig");
@@ -80,8 +81,15 @@ pub fn Auth(comptime impl: type) type {
         ///
         /// It returns `true` if permission has been granted, `false`
         /// otherwise (e.g. timeout).
-        pub fn requestPermission(user: *const User, rp: *const RelyingParty) bool {
+        pub fn requestPermission(user: ?*const User, rp: ?*const RelyingParty) bool {
             return impl.requestPermission(user, rp);
+        }
+
+        /// Return the (updated) signature count for the given credential id.
+        /// This can either be a distinct counter for each credential
+        /// or a global counter for all.
+        pub fn getSignCount(cred_id: []const u8) u32 {
+            return impl.getSignCount(cred_id);
         }
 
         pub const crypto = struct {
@@ -322,9 +330,8 @@ pub fn Auth(comptime impl: type) type {
                             .at = 1,
                             .ed = 0,
                         },
-                        .sign_count = 0, // TODO: replace with function call
+                        .sign_count = getSignCount(cred_id[0..]),
                         .attested_credential_data = acd,
-                        .extensions = "",
                     };
                     std.crypto.hash.sha2.Sha256.hash(mcp.@"2".id, &ad.rp_id_hash, .{});
                     var authData = std.ArrayList(u8).init(allocator);
@@ -357,7 +364,171 @@ pub fn Auth(comptime impl: type) type {
                         return res.toOwnedSlice();
                     };
                 },
-                .authenticator_get_assertion => {},
+                .authenticator_get_assertion => {
+                    const gap = cbor.parse(GetAssertionParam, cbor.DataItem.new(command[1..]), .{ .allocator = allocator }) catch |err| {
+                        const x = switch (err) {
+                            error.MissingField => StatusCodes.ctap2_err_missing_parameter,
+                            else => StatusCodes.ctap2_err_invalid_cbor,
+                        };
+                        res.items[0] = @enumToInt(x);
+                        return res.toOwnedSlice();
+                    };
+                    defer gap.deinit(allocator);
+
+                    var ctx_and_mac: ?[]const u8 = null;
+                    // 1. locate all denoted credentials present on this
+                    // authenticator and bound to the specified rpId.
+                    if (gap.@"3") |creds| {
+                        for (creds) |cred| {
+                            if (cred.id.len < crypto.ctx_len + Hmac.mac_length) {
+                                continue;
+                            }
+
+                            // Recalculate the hash
+                            var mac: [Hmac.mac_length]u8 = undefined;
+                            const ms = crypto.getMs();
+                            var hctx = Hmac.init(&ms);
+                            hctx.update(cred.id[0..32]); // ctx
+                            hctx.update(gap.@"1"); // rpId
+                            hctx.final(mac[0..]);
+
+                            // Compare the received hash to the one just
+                            // calculated.
+                            if (std.mem.eql(u8, cred.id[32..], mac[0..])) {
+                                ctx_and_mac = cred.id[0..];
+                                break;
+                            }
+                        }
+                    }
+
+                    // 2. If pinAuth parameter is present and pinProtocol is 1,
+                    // verify it by matching it against first 16 bytes of
+                    // HMAC-SHA-256 of clientDataHash parameter using pinToken:
+                    // HMAC-SHA-256(pinToken, clientDataHash).
+                    //   - If the verification succeeds, set the "uv" bit to 1
+                    //     in the response.
+                    //   - If the verification fails, return
+                    //     CTAP2_ERR_PIN_AUTH_INVALID error.
+                    // TODO: implement
+
+                    // 3. If pinAuth parameter is present and the pinProtocol is
+                    // not supported, return CTAP2_ERR_PIN_AUTH_INVALID.
+                    if (gap.@"6" != null) {
+                        // for now pinAuth is not supported
+                        res.items[0] = @enumToInt(StatusCodes.ctap2_err_pin_auth_invalid);
+                        return res.toOwnedSlice();
+                    }
+
+                    // 4. If pinAuth parameter is not present and clientPin has
+                    // been set on the authenticator, set the "uv" bit to 0 in
+                    // the response.
+                    // TODO: implement
+
+                    // 5. If the options parameter is present, process all the
+                    // options. If the option is known but not supported,
+                    // terminate this procedure and return
+                    // CTAP2_ERR_UNSUPPORTED_OPTION. If the option is known but
+                    // not valid for this command, terminate this procedure and
+                    // return CTAP2_ERR_INVALID_OPTION. Ignore any options that
+                    // are not understood. Note that because this specification
+                    // defines normative behaviors for them, all authenticators
+                    // MUST understand the "rk", "up", and "uv" options.
+                    if (gap.@"5") |opt| {
+                        if (opt.uv or !opt.up) { // currently no uv supported
+                            res.items[0] = @enumToInt(StatusCodes.ctap2_err_invalid_option);
+                            return res.toOwnedSlice();
+                        }
+                    }
+
+                    // 7. Collect user consent if required. This step MUST
+                    // happen before the following steps due to privacy reasons
+                    // (i.e., authenticator cannot disclose existence of a
+                    // credential until the user interacted with the device):
+                    if (!requestPermission(null, null)) {
+                        res.items[0] = @enumToInt(StatusCodes.ctap2_err_operation_denied);
+                        return res.toOwnedSlice();
+                    }
+
+                    // 8. If no credentials were located in step 1, return
+                    // CTAP2_ERR_NO_CREDENTIALS.
+                    if (ctx_and_mac == null) {
+                        res.items[0] = @enumToInt(StatusCodes.ctap2_err_no_credentials);
+                        return res.toOwnedSlice();
+                    }
+
+                    // 10. If authenticator does not have a display:
+                    //   - Remember the authenticatorGetAssertion parameters.
+                    //   - Create a credential counter(credentialCounter) and
+                    //     set it 1. This counter signifies how many credentials
+                    //     are sent to the platform by the authenticator.
+                    //   - Start a timer. This is used during
+                    //     authenticatorGetNextAssertion command. This step is
+                    //     optional if transport is done over NFC.
+                    //   - Update the response to include the first credential’s
+                    //     publicKeyCredentialUserEntity information and
+                    //     numberOfCredentials. User identifiable information
+                    //     (name, DisplayName, icon) inside
+                    //     publicKeyCredentialUserEntity MUST not be returned if
+                    //     user verification is not done by the authenticator.
+                    // TODO: implement???
+
+                    // 11. If authenticator has a display:
+                    //   - Display all these credentials to the user, using
+                    //     their friendly name along with other stored account
+                    //     information.
+                    //   - Also, display the rpId of the requester (specified
+                    //     in the request) and ask the user to select a
+                    //     credential.
+                    //   - If the user declines to select a credential or takes
+                    //     too long (as determined by the authenticator),
+                    //     terminate this procedure and return the
+                    //     CTAP2_ERR_OPERATION_DENIED error.
+                    // TODO: implement???
+
+                    // Return signature
+                    var ad = AuthData{
+                        .rp_id_hash = undefined,
+                        .flags = Flags{
+                            .up = 1,
+                            .rfu1 = 0,
+                            .uv = 0,
+                            .rfu2 = 0,
+                            .at = 1,
+                            .ed = 0,
+                        },
+                        .sign_count = getSignCount(ctx_and_mac.?),
+                        // attestedCredentialData are excluded
+                    };
+                    std.crypto.hash.sha2.Sha256.hash(gap.@"1", &ad.rp_id_hash, .{});
+                    var authData = std.ArrayList(u8).init(allocator);
+                    defer authData.deinit();
+                    try ad.encode(authData.writer());
+
+                    // 12. Sign the clientDataHash along with authData with the
+                    // selected credential.
+                    const kp = crypto.deriveKeyPair(ctx_and_mac.?[0..32].*) catch unreachable; // TODO: is it???
+                    var st = kp.signer(null) catch {
+                        res.items[0] = @enumToInt(StatusCodes.ctap1_err_other);
+                        return res.toOwnedSlice();
+                    };
+                    st.update(authData.items); // authData
+                    st.update(gap.@"2_b"); // clientDataHash
+                    const sig = st.finalize() catch {
+                        res.items[0] = @enumToInt(StatusCodes.ctap1_err_other);
+                        return res.toOwnedSlice();
+                    };
+
+                    var x: [Ecdsa.Signature.der_encoded_max_length]u8 = undefined;
+                    const gar = GetAssertionResponse{
+                        .@"2_b" = authData.items,
+                        .@"3_b" = sig.toDer(&x),
+                    };
+
+                    cbor.stringify(gar, .{}, response) catch |err| {
+                        res.items[0] = @enumToInt(StatusCodes.fromError(err));
+                        return res.toOwnedSlice();
+                    };
+                },
                 .authenticator_get_info => {
                     cbor.stringify(self, .{}, response) catch |err| {
                         res.items[0] = @enumToInt(StatusCodes.fromError(err));

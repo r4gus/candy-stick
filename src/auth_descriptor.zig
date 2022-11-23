@@ -26,10 +26,22 @@ const Impl = struct {
 
     pub fn createMs() void {}
 
-    pub fn requestPermission(user: *const User, rp: *const RelyingParty) bool {
+    pub fn requestPermission(user: ?*const User, rp: ?*const RelyingParty) bool {
         _ = user;
         _ = rp;
         return true;
+    }
+
+    pub fn getSignCount(cred_id: []const u8) u32 {
+        _ = cred_id;
+        // TODO: preserve this counter!
+        const S = struct {
+            var i: u32 = 0;
+        };
+
+        const x = S.i;
+        S.i += 1;
+        return x;
     }
 };
 
