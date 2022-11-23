@@ -24,6 +24,7 @@ const commands = @import("commands.zig");
 pub const Commands = commands.Commands;
 const getCommand = commands.getCommand;
 const MakeCredentialParam = commands.make_credential.MakeCredentialParam;
+const GetAssertionParam = commands.get_assertion.GetAssertionParam;
 const version = @import("version.zig");
 pub const Versions = version.Versions;
 const extension = @import("extensions.zig");
@@ -288,14 +289,26 @@ pub fn Auth(comptime impl: type) type {
                     //       persist the new credential, return CTAP2_ERR_KEY_STORE_FULL.
                     // TODO: Resident key support currently not planned
 
+                    // credId consists of the context used to derive the
+                    // private key and a MAC of the ctx and the rpId. This
+                    // is how we can make sure that the ctx or rpId havent
+                    // been tempered with.
+                    var cred_id: [crypto.ctx_len + Hmac.mac_length]u8 = undefined;
+                    std.mem.copy(u8, cred_id[0..32], &context.ctx);
+                    const ms = crypto.getMs();
+                    var ctx = Hmac.init(&ms);
+                    ctx.update(&context.ctx);
+                    ctx.update(mcp.@"2".id);
+                    ctx.final(cred_id[32..]);
+
                     // 11. Generate an attestation statement for the newly-created
                     // key using clientDataHash.
                     const acd = AttestedCredentialData{
                         .aaguid = self.@"3_b",
-                        .credential_length = crypto.ctx_len,
+                        .credential_length = crypto.ctx_len + Hmac.mac_length,
                         // context is used as id to later retrieve actual key using
                         // the master secret.
-                        .credential_id = &context.ctx,
+                        .credential_id = &cred_id,
                         .credential_public_key = EcdsaPubKey.new(context.key_pair.public_key),
                     };
 
