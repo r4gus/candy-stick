@@ -153,9 +153,10 @@ pub fn Auth(comptime impl: type) type {
             }
 
             /// Derive a (deterministic) sub-key for message authentication codes.
-            pub fn getMacKey() [ms_length]u8 {
+            pub fn getMacKey() [key_len]u8 {
                 var mac_key: [key_len]u8 = undefined;
                 Hkdf.expand(mac_key[0..], "MACKEY", getMs());
+                return mac_key;
             }
 
             /// Create a new key-pair.
@@ -318,8 +319,8 @@ pub fn Auth(comptime impl: type) type {
                     // been tempered with.
                     var cred_id: [crypto.ctx_len + Hmac.mac_length]u8 = undefined;
                     std.mem.copy(u8, cred_id[0..32], &context.ctx);
-                    const ms = crypto.getMs();
-                    var ctx = Hmac.init(&ms);
+                    const key = crypto.getMacKey();
+                    var ctx = Hmac.init(&key);
                     ctx.update(&context.ctx);
                     ctx.update(mcp.@"2".id);
                     ctx.final(cred_id[32..]);
@@ -401,8 +402,8 @@ pub fn Auth(comptime impl: type) type {
 
                             // Recalculate the hash
                             var mac: [Hmac.mac_length]u8 = undefined;
-                            const ms = crypto.getMs();
-                            var hctx = Hmac.init(&ms);
+                            const key = crypto.getMacKey();
+                            var hctx = Hmac.init(&key);
                             hctx.update(cred.id[0..32]); // ctx
                             hctx.update(gap.@"1"); // rpId
                             hctx.final(mac[0..]);
