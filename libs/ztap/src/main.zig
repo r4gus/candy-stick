@@ -44,35 +44,60 @@ const AttStmt = attestation_object.AttStmt;
 pub const User = @import("user.zig");
 pub const RelyingParty = @import("rp.zig");
 
+/// General properties of a given authenticator.
+pub const Info = struct {
+    /// versions: List of supported versions.
+    @"1_t": []const Versions,
+    /// extensions: List of supported extensions.
+    @"2_t": ?[]const Extensions,
+    /// aaguid: The Authenticator Attestation GUID (AAGUID) is a 128-bit identifier
+    /// indicating the type of the authenticator. Authenticators with the
+    /// same capabilities and firmware, can share the same AAGUID.
+    @"3_b": [16]u8,
+    /// optoins: Supported options.
+    @"4": ?Options,
+    /// maxMsgSize: Maximum message size supported by the authenticator.
+    /// null = unlimited.
+    @"5": ?u64,
+    /// pinProtocols: List of supported PIN Protocol versions.
+    @"6": ?[]const u8, // TODO: add _a option to enforce array
+};
+
+pub const AttType = enum {
+    /// In this case, no attestation information is available.
+    none,
+    /// In the case of self attestation, also known as surrogate basic attestation [UAFProtocol], the
+    /// Authenticator does not have any specific attestation key pair. Instead it uses the credential private key
+    /// to create the attestation signature. Authenticators without meaningful protection measures for an
+    /// attestation private key typically use this attestation type.
+    self,
+};
+
+pub const AttestationType = struct {
+    att_type: AttType = AttType.self,
+};
+
 pub fn Auth(comptime impl: type) type {
     return struct {
         const Self = @This();
 
-        /// versions: List of supported versions.
-        @"1_t": []const Versions,
-        /// extensions: List of supported extensions.
-        @"2_t": ?[]const Extensions,
-        /// aaguid: The Authenticator Attestation GUID (AAGUID) is a 128-bit identifier
-        /// indicating the type of the authenticator. Authenticators with the
-        /// same capabilities and firmware, can share the same AAGUID.
-        @"3_b": [16]u8,
-        /// optoins: Supported options.
-        @"4": ?Options,
-        /// maxMsgSize: Maximum message size supported by the authenticator.
-        /// null = unlimited.
-        @"5": ?u64,
-        /// pinProtocols: List of supported PIN Protocol versions.
-        @"6": ?[]const u8, // TODO: add _a option to enforce array
+        /// General properties of the given authenticator.
+        info: Info,
+        /// Attestation type to be used for attestation.
+        attestation_type: AttestationType,
 
         /// Default initialization without extensions.
         pub fn initDefault(versions: []const Versions, aaguid: [16]u8) Self {
             return @This(){
-                .@"1_t" = versions,
-                .@"2_t" = null,
-                .@"3_b" = aaguid,
-                .@"4" = Options.default(),
-                .@"5" = null,
-                .@"6" = null,
+                .info = Info{
+                    .@"1_t" = versions,
+                    .@"2_t" = null,
+                    .@"3_b" = aaguid,
+                    .@"4" = Options{}, // default options
+                    .@"5" = null,
+                    .@"6" = null,
+                },
+                .attestation_type = AttestationType{},
             };
         }
 
@@ -328,7 +353,7 @@ pub fn Auth(comptime impl: type) type {
                     // 11. Generate an attestation statement for the newly-created
                     // key using clientDataHash.
                     const acd = AttestedCredentialData{
-                        .aaguid = self.@"3_b",
+                        .aaguid = self.info.@"3_b",
                         .credential_length = crypto.ctx_len + Hmac.mac_length,
                         // context is used as id to later retrieve actual key using
                         // the master secret.
@@ -349,30 +374,39 @@ pub fn Auth(comptime impl: type) type {
                         .sign_count = getSignCount(cred_id[0..]),
                         .attested_credential_data = acd,
                     };
+                    // Calculate the SHA-256 hash of the rpId (base url).
                     std.crypto.hash.sha2.Sha256.hash(mcp.@"2".id, &ad.rp_id_hash, .{});
                     var authData = std.ArrayList(u8).init(allocator);
                     defer authData.deinit();
                     try ad.encode(authData.writer());
 
-                    var st = context.key_pair.signer(null) catch {
-                        res.items[0] = @enumToInt(StatusCodes.ctap1_err_other);
-                        return res.toOwnedSlice();
-                    };
-                    st.update(authData.items);
-                    st.update(mcp.@"1"); // clientDataHash
-                    const sig = st.finalize() catch {
-                        res.items[0] = @enumToInt(StatusCodes.ctap1_err_other);
-                        return res.toOwnedSlice();
-                    };
+                    // Create attestation statement
+                    var stmt: ?AttStmt = null;
+                    if (self.attestation_type.att_type == .self) {
+                        var st = context.key_pair.signer(null) catch {
+                            res.items[0] = @enumToInt(StatusCodes.ctap1_err_other);
+                            return res.toOwnedSlice();
+                        };
+                        st.update(authData.items);
+                        st.update(mcp.@"1"); // clientDataHash
+                        const sig = st.finalize() catch {
+                            res.items[0] = @enumToInt(StatusCodes.ctap1_err_other);
+                            return res.toOwnedSlice();
+                        };
 
-                    var x: [Ecdsa.Signature.der_encoded_max_length]u8 = undefined;
+                        var x: [Ecdsa.Signature.der_encoded_max_length]u8 = undefined;
+                        stmt = AttStmt{ .@"packed" = .{
+                            .alg_b = crypt.CoseId.ES256,
+                            .sig_b = sig.toDer(&x),
+                        } };
+                    } else {
+                        stmt = AttStmt{ .none = .{} };
+                    }
+
                     const ao = AttestationObject{
                         .@"1" = Fmt.@"packed",
                         .@"2_b" = authData.items,
-                        .@"3" = AttStmt{ .@"packed" = .{
-                            .alg_b = crypt.CoseId.ES256,
-                            .sig_b = sig.toDer(&x),
-                        } },
+                        .@"3" = stmt.?,
                     };
 
                     cbor.stringify(ao, .{}, response) catch |err| {
@@ -546,7 +580,7 @@ pub fn Auth(comptime impl: type) type {
                     };
                 },
                 .authenticator_get_info => {
-                    cbor.stringify(self, .{}, response) catch |err| {
+                    cbor.stringify(self.info, .{}, response) catch |err| {
                         res.items[0] = @enumToInt(StatusCodes.fromError(err));
                         return res.toOwnedSlice();
                     };
