@@ -53,3 +53,9 @@ dkms.conf
 
 # Build folder
 _build
+
+# tools
+cred
+cred_param
+assert_param
+pubkey

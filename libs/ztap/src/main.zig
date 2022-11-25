@@ -134,7 +134,11 @@ pub fn Auth(comptime impl: type) type {
             /// one can expect the master secret to be available at
             /// any time.
             pub fn getMs() [ms_length]u8 {
-                return impl.getMs();
+                // Create a more uniformly unbiased and higher entropy,
+                // from the RANDOMLY GENERATED master secret.
+                const ikm = impl.getMs();
+                const salt = "CANDYSTICK";
+                return Hkdf.extract(salt, &ikm);
             }
 
             /// Create and store a new master secret.
@@ -148,6 +152,13 @@ pub fn Auth(comptime impl: type) type {
                 impl.createMs();
             }
 
+            /// Derive a (deterministic) sub-key for message authentication codes.
+            pub fn getMacKey() [ms_length]u8 {
+                var mac_key: [key_len]u8 = undefined;
+                Hkdf.expand(mac_key[0..], "MACKEY", getMs());
+            }
+
+            /// Create a new key-pair.
             pub fn createKeyPair() !KeyContext {
                 // Get new random context for new key pair
                 var ctx: [ctx_len]u8 = undefined;
@@ -166,6 +177,10 @@ pub fn Auth(comptime impl: type) type {
                 return kc;
             }
 
+            /// Derive a (deterministic) key-pair from a given context `ctx`.
+            ///
+            /// Note: If you change the master secret used during `createKeyPair`
+            /// you won't be able to derive the correct key-pair from the given context.
             pub fn deriveKeyPair(ctx: [ctx_len]u8) !KeyPair {
                 var seed: [key_len]u8 = undefined;
                 Hkdf.expand(seed[0..], ctx[0..], getMs());
