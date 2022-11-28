@@ -1,5 +1,4 @@
 const std = @import("std");
-const ztap = @import("ztap");
 const ctaphid = @import("ctaphid.zig");
 
 const auth_descriptor = @import("auth_descriptor.zig");

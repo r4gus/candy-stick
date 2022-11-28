@@ -1,4 +1,0 @@
-[submodule "libs/ztap"]
-	path = libs/ztap
-	url = https://github.com/r4gus/ztap.git
-	branch = main
