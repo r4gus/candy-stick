@@ -59,3 +59,5 @@ cred
 cred_param
 assert_param
 pubkey
+
+/libs/fido2

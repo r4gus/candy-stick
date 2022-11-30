@@ -10,6 +10,9 @@ pub fn enableTrng() void {
 }
 
 const Impl = struct {
+    // TODO: data to be stored in flash (securely)
+    // MASTER_SECRET || PIN || SIGN_COUNTER || RETRIES
+
     pub fn rand() u32 {
         regs.TRNG.CTRLA.modify(.{ .ENABLE = 1 });
         while (regs.TRNG.INTFLAG.read().DATARDY == 0) {
@@ -42,6 +45,25 @@ const Impl = struct {
         const x = S.i;
         S.i += 1;
         return x;
+    }
+
+    fn retries(s: i8) u8 {
+        const S = struct {
+            // TODO: make this permanent
+            var i: u8 = 8;
+        };
+
+        if (s > 0) {
+            S.i = 8;
+        } else if (s < 0 and S.i > 0) {
+            S.i -= 1;
+        }
+
+        return S.i;
+    }
+
+    pub fn getRetries() u8 {
+        return retries(0);
     }
 };
 

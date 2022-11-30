@@ -15,14 +15,50 @@ src/
 
 To build the project you must have installed the [Zig](https://ziglang.org/) compiler on your system.
 
-Then just run `./build` from the root directory.
+You also need the `arm-none-eabi` build tools. For Arch you can install it using the
+following command:
+
+```
+sudo pacman -S arm-none-eabi-gcc arm-none-eabi-newlib
+```
+
+> **NOTE**: Without `*-newlib` you'll get the `fatal error: stdint.h: No such file or directory
+ # include_next <stdint.h>` error.
+
+Also make sure that you've `git` installed. Then just run `./build` from the root directory.
 
 ## Flash
 
-To flash the firmware just run `./flash` from the root directory.
+To flash the firmware install [edbg](https://github.com/ataradov/edbg) and then just run `./flash` from the 
+root directory.
 
 > Note: This project targets the SAM E51 Curiosity Nano, i.e. the
 > ATSAME51J20A (ARM Cortex-M4F) chip.
+
+## Tools
+
+To use the tools you need to install `libfido2`.
+
+### Arch
+
+```
+sudo pacman -S libfido2
+```
+
+### Ubuntu
+
+```
+$ sudo apt install libfido2-1 libfido2-dev libfido2-doc fido2-tools
+```
+
+### Build from source
+```
+git clone https://github.com/Yubico/libfido2.git
+cd libfido2
+cmake -B build
+make -C build
+sudo make -C build install
+```
 
 ## Important Notes
 
