@@ -253,20 +253,20 @@ pub fn handle(allocator: Allocator, packet: []const u8, auth: anytype) ?CtapHidR
                 reset(&S);
                 return response;
             },
-            else => {
-                //var response = allocator.alloc(u8, CID_LENGTH + CMD_LENGTH + 2) catch {
-                //    reset(&S);
-                //    return null;
-                //};
-                //std.mem.copy(u8, response[0..CID_LENGTH], std.mem.asBytes(&S.busy.?));
-                //response[CID_LENGTH] = 0xbf;
-                //response[CID_LENGTH + 1] = 1;
-                //response[CID_LENGTH + 2] = 0x01;
+            .ping => {
+                var response = resp.iterator(S.busy.?, S.cmd.?, S.data[0..S.bcnt]);
 
-                //reset(&S);
-                //return response;
+                reset(&S);
+                return response;
+            },
+            .cancel => {
                 reset(&S);
                 return null;
+            },
+            else => {
+                var response = resp.iterator(S.busy.?, S.cmd.?, "\x01"); // invalid request
+                reset(&S);
+                return response;
             },
         }
     }

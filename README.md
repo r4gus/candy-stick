@@ -15,14 +15,21 @@ src/
 
 To build the project you must have installed the [Zig](https://ziglang.org/) compiler on your system.
 
-You also need the `arm-none-eabi` build tools. For Arch you can install it using the
-following command:
+You also need the `arm-none-eabi` build tools. 
+
+### Arch
 
 ```
 sudo pacman -S arm-none-eabi-gcc arm-none-eabi-newlib
 ```
 
-> **NOTE**: Without `*-newlib` you'll get the `fatal error: stdint.h: No such file or directory
+### Ubuntu
+
+```
+sudo apt install gcc-arm-none-eabi
+```
+
+> **NOTE**: Without `*-newlib` (Arch) you'll get the `fatal error: stdint.h: No such file or directory
  # include_next <stdint.h>` error.
 
 Also make sure that you've `git` installed. Then just run `./build` from the root directory.

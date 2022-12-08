@@ -24,7 +24,7 @@ const Impl = struct {
     }
 
     pub fn getMs() [fido.ms_length]u8 {
-        return .{ 0x11, 0x25, 0xdc, 0xed, 0x00, 0x72, 0x95, 0xa2, 0x98, 0x63, 0x68, 0x2d, 0x7b, 0x1c, 0xc3, 0x83, 0x58, 0x38, 0xcf, 0x7a, 0x19, 0x62, 0xe0, 0x90, 0x5a, 0x36, 0xb2, 0xed, 0xa6, 0x07, 0x3e, 0xe1 };
+        return .{ 0x10, 0x25, 0xdc, 0xed, 0x00, 0x72, 0x85, 0xa2, 0x98, 0xaa, 0xca, 0xfe, 0x7b, 0x1c, 0xc3, 0x83, 0x58, 0x38, 0xcf, 0x7a, 0x19, 0x62, 0xe0, 0x90, 0x5a, 0x36, 0xb2, 0xed, 0xa6, 0x07, 0x3e, 0xe1 };
     }
 
     pub fn createMs() void {}
@@ -32,6 +32,11 @@ const Impl = struct {
     pub fn requestPermission(user: ?*const User, rp: ?*const RelyingParty) bool {
         _ = user;
         _ = rp;
+
+        //var i: usize = 0;
+        //while (i < 10000000) : (i += 1) {
+        //    @import("std").mem.doNotOptimizeAway(i);
+        //}
         return true;
     }
 
@@ -64,6 +69,21 @@ const Impl = struct {
 
     pub fn getRetries() u8 {
         return retries(0);
+    }
+
+    var pin: [16]u8 = undefined;
+    var pin_set: bool = false;
+
+    pub fn getPin() ?[]const u8 {
+        if (!pin_set) {
+            return null;
+        } else {
+            return pin[0..];
+        }
+    }
+
+    pub fn setPin(p: [16]u8) void {
+        pin = p;
     }
 };
 

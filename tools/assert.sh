@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 if [[ $# -lt 1 ]]; then
     echo "usage: $0 <hidraw-id>"

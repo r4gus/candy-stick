@@ -1,6 +1,6 @@
-#!/bin/sh
+#!/bin/bash
 
-sh pull-deps.sh
+./pull-deps.sh
 
 # Compile the Zig part of the app
 zig build-obj \

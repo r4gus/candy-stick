@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 path="./libs/fido2"
 
@@ -22,5 +22,5 @@ else
 fi
 
 cd $path
-sh pull-deps.sh
+./pull-deps.sh
 cd ../..
