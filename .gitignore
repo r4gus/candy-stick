@@ -59,5 +59,6 @@ cred
 cred_param
 assert_param
 pubkey
+falsh.bin
 
 /libs/fido2

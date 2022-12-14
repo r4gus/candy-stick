@@ -60,14 +60,7 @@ fn tudTask() void {
 
 export fn main() void {
     board_init();
-    auth_descriptor.enableTrng();
-
-    // initialize flash storage
-    auth_descriptor.indicator_flash.init();
-    auth_descriptor.master_secret_flash.init();
-
-    // Create master secret if it doesnt exist
-    auth_descriptor.Impl.createMs();
+    auth_descriptor.init();
 
     // init device stack on configured roothub port.
     _ = tud_init(0);
