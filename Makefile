@@ -5,9 +5,11 @@ INC += \
 	src \
 	$(TOP)/hw \
 
-# Example source
-PROJECT_SOURCE += $(wildcard src/*.c)
-SRC_C += $(addprefix $(CURRENT_PATH)/, $(PROJECT_SOURCE))
+# This didn't work on mac
+#PROJECT_SOURCE += $(wildcard src/*.c)
+#SRC_C += $(addprefix $(CURRENT_PATH)/, $(PROJECT_SOURCE))
+
+SRC_C += src/usb_descriptors.c
 
 ZIG_OBJ += main.o
 
