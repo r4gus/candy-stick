@@ -1,5 +1,5 @@
 const std = @import("std");
-const ctaphid = @import("ctaphid.zig");
+const ctaphid = @import("fido").ctaphid;
 
 const auth_descriptor = @import("auth_descriptor.zig");
 const auth = auth_descriptor.auth;
