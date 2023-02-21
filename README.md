@@ -1,5 +1,7 @@
 # Candy Stick
 
+There have been some API changes to the fido2 library, i.e., this project will currently not compile. Please see [candy-stick-nrf](https://github.com/r4gus/candy-stick-nrf) for a working example.
+
 CTAP2 firmware
 
 ```
